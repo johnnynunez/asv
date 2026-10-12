@@ -1,0 +1,26 @@
+name: diag-x64-314t
+on:
+  push:
+    branches: [diag-x64-314t-step-detect]
+permissions:
+  contents: read
+jobs:
+  step-detect:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14t"
+      - name: Install and test (x64 free-threaded control)
+        shell: pwsh
+        run: |
+          python -c "import sys, platform, sysconfig; print(sys.version, platform.machine(), sysconfig.get_config_var('Py_GIL_DISABLED'))"
+          python -m pip install . pytest pytest-timeout pytest-rerunfailures filelock numpy scipy feedparser selenium flaky
+          New-Item -ItemType Directory "$env:RUNNER_TEMP\t" | Out-Null
+          Copy-Item -Recurse test "$env:RUNNER_TEMP\t\test"
+          Set-Location "$env:RUNNER_TEMP\t"
+          python -c "import asv._rangemedian as m; print(m.__file__)"
+          python -m pytest -v -ra test/test_step_detect.py
