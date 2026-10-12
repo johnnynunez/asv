@@ -17,7 +17,6 @@ jobs:
   get_commit_message:
     name: Get commit message
     runs-on: ubuntu-latest
-    if: "github.repository == 'airspeed-velocity/asv'"
     outputs:
       message: ${{ steps.commit_message.outputs.message }}
     steps:
@@ -47,10 +46,6 @@ jobs:
       fail-fast: false
       matrix:
         buildplat:
-          - [ubuntu-22.04, manylinux_x86_64]
-          - [ubuntu-22.04, musllinux_x86_64]
-          - [macos-15-intel, macosx_x86_64]
-          - [macos-15, macosx_arm64]
           - [windows-2022, win_amd64]
           - [windows-11-arm, win_arm64]
 
@@ -89,3 +84,52 @@ jobs:
       - uses: actions/upload-artifact@v5
         with:
           path: dist/*.tar.gz
+
+  # Verification only (not part of the upstream PR): test the built ARM64
+  # wheels in fresh native environments, outside the source tree.
+  test_win_arm64:
+    name: Test win_arm64 wheel (${{ matrix.python-version }})
+    needs: build_wheels
+    runs-on: windows-11-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14", "3.14t"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          architecture: arm64
+      - uses: actions/download-artifact@v5
+        with:
+          name: cibw-wheels-cp-win_arm64
+          path: wheelhouse
+      - name: Install wheel and test deps, run tests
+        shell: pwsh
+        run: |
+          python -c "import sys, platform, sysconfig; print(sys.version, platform.machine(), sysconfig.get_platform())"
+          python -m venv "$env:RUNNER_TEMP\venv"
+          $py = "$env:RUNNER_TEMP\venv\Scripts\python.exe"
+          & $py -m pip install --upgrade pip
+          & $py -m pip install --only-binary ":all:" --no-index --find-links wheelhouse asv --no-deps
+          if ($LASTEXITCODE) { exit 1 }
+          & $py -m pip install --only-binary "numpy,scipy" asv --find-links wheelhouse
+          & $py -m pip install --only-binary "numpy,scipy" pytest pytest-timeout pytest-rerunfailures filelock numpy scipy feedparser selenium flaky
+          if ($LASTEXITCODE) { exit 1 }
+          & $py -m pip list
+          New-Item -ItemType Directory "$env:RUNNER_TEMP\t" | Out-Null
+          Copy-Item -Recurse test "$env:RUNNER_TEMP\t\test"
+          Set-Location "$env:RUNNER_TEMP\t"
+          & $py -c "import asv, asv._rangemedian as m, asv.step_detect as s; print(asv.__version__, m.__file__); assert s._rangemedian is m"
+          if ($LASTEXITCODE) { exit 1 }
+          & $py -m pytest -v -ra --timeout=600 --junitxml=junit.xml test/test_step_detect.py test/test_statistics.py test/test_util.py test/test_results.py test/test_console.py test/test_compare.py
+          $rc = $LASTEXITCODE
+          New-Item -ItemType Directory "$env:GITHUB_WORKSPACE\evidence" -Force | Out-Null
+          Copy-Item junit.xml "$env:GITHUB_WORKSPACE\evidence\junit-${{ matrix.python-version }}.xml"
+          exit $rc
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: junit-win_arm64-${{ matrix.python-version }}
+          path: evidence/
