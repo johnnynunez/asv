@@ -1,5 +1,6 @@
 import contextlib
 import os
+import pathlib
 import shutil
 import sys
 import textwrap
@@ -329,7 +330,7 @@ def dummy_packages(request, monkeypatch):
     with locked_cache_dir(request.config, "asv-wheels", timeout=900, tag=tag) as cache_dir:
         wheel_dir = os.path.abspath(join(str(cache_dir), 'wheels'))
 
-        monkeypatch.setenv('PIP_FIND_LINKS', str('file://' + wheel_dir))
+        monkeypatch.setenv('PIP_FIND_LINKS', pathlib.Path(wheel_dir).as_uri())
 
         condarc = join(wheel_dir, 'condarc')
         monkeypatch.setenv('CONDARC', str(condarc))
