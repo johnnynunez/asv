@@ -15,6 +15,11 @@ jobs:
       matrix:
         os: ["windows-latest"]
         python-version: ["3.9"]
+        include:
+          # Native Windows ARM64. conda-forge only has win-arm64 Python
+          # builds for 3.14+, which the rattler environment tests need.
+          - os: "windows-11-arm"
+            python-version: "3.14"
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v6
